@@ -129,10 +129,10 @@ install-fresh-os:
 
 # Enable Starship shell theme for fish
 enable-starship-fish:
-	echo 'source (/usr/local/bin/starship init fish --print-full-init | psub)' >> ~/.config/fish/config.fish
+	printf '\nsource (/usr/local/bin/starship init fish --print-full-init | psub)' >> ~/.config/fish/config.fish && source ~/.config/fish/config.fish
 # Enable Starship shell theme for zsh
 enable-starship-zsh:
-	echo 'eval "$(starship init zsh)"' >> ~/.zshrc
+	printf 'eval "$(starship init zsh)"' >> ~/.zshrc
 
 # Enable systemd-boot services
 enable-systemd-boot-services:
