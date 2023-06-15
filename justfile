@@ -93,5 +93,5 @@ du:
     dust
 regex:
     grex
-vi:
+nano:
     micro
