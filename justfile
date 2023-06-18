@@ -4,10 +4,6 @@
 # Common cross-platform shell scripts using
 # Just (command runner) and Doppler (env manager)
 #
-# + ------------------------------ +
-# | THE SCRIPTS ASSUME YOU'RE ROOT | 
-# + ------------------------------ +
-# ::::::::::::::::::::::::::::::::/
 # Some reference packages: https://wiki.archlinux.org/title/list_of_applications
 
 # + --------------------------------- +
@@ -70,18 +66,21 @@ bold := '\033[1m'
 # Reset
 reset := '\033[0m'
 
-# + -----------------------------------------  +
+# TODO: progress bar with a concise description for every step;
+
+# + ------------------------------------------ +
 # | IMPORT PRE-BUILT PACKAGES FROM CHAOTIC-AUR | 
 # + ------------------------------------------ +
 # ::::::::::::::::::::::::::::::::::::::::::::/
-# Keyring from chaotic-aur keyserver:
+# Keyring from `chaotic-aur` keyserver:
 import-chaotic-keyring:
-	pacman-key --recv-key FBA220DFC880C036 --keyserver keyserver.ubuntu.com
-	pacman-key --lsign-key FBA220DFC880C036
-	pacman -U https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst
+	sudo pacman-key --recv-key FBA220DFC880C036 --keyserver keyserver.ubuntu.com
+	sudo pacman-key --lsign-key FBA220DFC880C036
+	sudo pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst'
 
 # Import chaotic-aur mirrorlist to pacman
 import-chaotic-aur:
+	just import-chaotic-keyring
 	printf '\v[chaotic-aur] \nInclude = /etc/pacman.d/chaotic-mirrorlist \v' >> /etc/pacman.conf
 
 # + -------------------------- +
@@ -91,10 +90,11 @@ import-chaotic-aur:
 # Apply undervolt to Intel processor newer than Haswell
 apply-intel-undervolt:
 	@printf '\v{{yellow_b}} Deleting the old cloned directory...\v\n {{reset}}'
-	rm -rf /undervolt
-	@printf '\v{{green_b}}\t>>{{reset}}{{bold}} Clone from git to /undervolt directory...\v\n {{reset}}'
-	git clone https://github.com/georgewhewell/undervolt.git /undervolt
+	@sudo rm -rf ~/undervolt
+	@printf '\v{{green_b}}\t>>{{reset}}{{bold}} Clone from git to ~/undervolt directory...\v\n {{reset}}'
+	@git clone https://github.com/georgewhewell/undervolt.git ~/undervolt
 	@printf '\v{{green_b}}\t>>{{reset}}{{bold}} Create new undervolt service to systemd \v\n{{reset}}'
+	@sudo touch /etc/systemd/system/undervolt.service
 	@printf '[Unit] \
 	\nDescription=undervolt \
 	\nAfter=suspend.target \
@@ -109,36 +109,71 @@ apply-intel-undervolt:
 	\nWantedBy=multi-user.target \
 	\nWantedBy=suspend.target \
 	\nWantedBy=hibernate.target \
-	\nWantedBy=hybrid-sleep.target' > /etc/systemd/system/undervolt.service
-	systemctl enable --now undervolt.service && /undervolt/undervolt.py --read
+	\nWantedBy=hybrid-sleep.target' > sudo /etc/systemd/system/undervolt.service
+	@printf '\v{{green_b}}\t>>{{reset}}{{bold}} Starting undervolt services...\v\n{{reset}}'
+	@sudo systemctl enable --now undervolt.service && sudo ~/undervolt/undervolt.py --read
 	@printf '\v{{green_b}}\t>>{{reset}}{{bold}} Undervolt applied successfuly!\v\n{{reset}}'
 
 # + --------------------------------- +
 # | DEPLOY A FRESH AND UPDATED SYSTEM |
 # + --------------------------------- +
 # :::::::::::::::::::::::::::::::::::/
-# Install Rust toolchain
+# Install paru AUR helper
+install-paru:
+	@printf '\v{{yellow_b}} Deleting any previous clone...{{reset}}\v\n'
+	rm -rf ~/paru
+	git clone https://aur.archlinux.org/paru.git ~/paru
+	cd ~/paru && makepkg -si
+	rm -rf ~/paru
+	@printf '\v{{green_b}} Paru installed successfuly!{{reset}}\v\n'
+
+# Install Rust toolchain and set default to `stable` release
 install-rust:
-	pacman -S rustup && rustup default stable
+	@sudo pacman -S rustup && rustup default stable
 
 # Refresh and sync new pacman packages
-install-fresh-os:
-	pacman -Syyuuv
-	pacman -Sv --noconfirm snap-pac just fish starship paru cmake micro wl-clipboard rsync rclone git base-devel
-	paru -Sv --noconfirm noto-fonts noto-fonts-cjk firefox rclone-browser fd exa bottom grex ripgrep xh bat sd dust tealdeer gitui code code-marketplace code-features browsh
+install-base-os:
+	@printf '\v{{green}}\t>>{{reset}}{{bold}} Installing system components{{reset}} \v\n'
+	just install-rust
+	sudo pacman -Syyuuv
+	sudo pacman -Sv --noconfirm snap-pac just fish starship cmake micro wl-clipboard rsync rclone git base-devel vulkan-tools
+	just install-paru
+	just enable-systemd-boot-services
+	just set-fish-shell
 
+# Install `fish` as default shell and apply `starship` theme
+set-fish-shell:
+	sudo su -c "chsh -s /bin/fish $(whoami) < /bin/fish"
+	just enable-starship-fish
+	
+# Install extra common desktop packages
+install-desktop-extra:
+	paru -Sv --noconfirm noto-fonts noto-fonts-cjk firefox rclone-browser fd exa bottom grex ripgrep xh bat sd dust tealdeer gitui code code-marketplace code-features rclone-browser browsh easyeffects lsp-plugins
+
+# Install extra packages for GNOME Desktop Environment
+install-gnome-extra:
+	paru -Sv --nonconfirm guake webkit2gtk gnome-browser-connector
+
+# TODO: Configure GNOME
+#	set default shorcuts
+#	set default tap-to-click
+#	set default EasyEffects settings
+#	set default guake settings
+
+starship_path := `which starship`
 # Enable Starship shell theme for fish
 enable-starship-fish:
-	printf '\nsource (/usr/local/bin/starship init fish --print-full-init | psub)' >> ~/.config/fish/config.fish && source ~/.config/fish/config.fish
+	@printf '\nsource ({{starship_path}} init fish --print-full-init | psub)' >> ~/.config/fish/config.fish
+	@printf '\v{{green_b}}Starship added successfuly!{{reset}}\v\nRestart fish shell or update current shell with:\n{{yellow}}source ~/.config/fish/config.fish{{reset}}'
 # Enable Starship shell theme for zsh
 enable-starship-zsh:
-	printf 'eval "$(starship init zsh)"' >> ~/.zshrc
+	@printf 'eval "$(starship init zsh)"' >> ~/.zshrc
 
 # Enable systemd-boot services
 enable-systemd-boot-services:
 	systemctl enable systemd-boot-check-no-failures.service systemd-boot-update.service
 
-# Sync and restore a cloud backup (if any) with rclone
+# TODO: Sync and restore a cloud backup (if any) with rclone
 
 # Bash-to-Rust shell utils
 ls:
@@ -148,7 +183,7 @@ top:
 grep:
     rg
 find:
-    fd
+    fd --hidden
 sed:
 	sd
 cat:
